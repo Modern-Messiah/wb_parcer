@@ -14,7 +14,7 @@ FULL_CATALOG_FILE = "full_catalog.xlsx"
 FILTERED_CATALOG_FILE = "filtered_catalog.xlsx"
 ERROR_LOG_FILE = "run_errors.log"
 SEARCH_URL = "https://search.wb.ru/exactmatch/ru/common/v18/search"
-BASKET_HOSTS = [f"basket-{index:02d}.wbbasket.ru" for index in range(1, 31)]
+BASKET_HOSTS = [f"basket-{index:02d}.wbbasket.ru" for index in range(1, 61)]
 
 
 @dataclass
