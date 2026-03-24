@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any
 
@@ -25,6 +26,7 @@ class SearchConfig:
     page_delay_seconds: float = 2.5
     dest: int = -1257786
     max_retries: int = 6
+    card_workers: int = 4
 
 
 def build_session() -> requests.Session:
@@ -233,11 +235,11 @@ def enrich_product(
 
 def collect_catalog(config: SearchConfig) -> list[dict[str, Any]]:
     clear_error_log()
-    session = build_session()
     page = config.page
     products: list[dict[str, Any]] = []
     seen_articles: set[int] = set()
     host_cache: dict[int, str] = {}
+    session = build_session()
 
     while True:
         page_items = fetch_search_page(
@@ -250,23 +252,34 @@ def collect_catalog(config: SearchConfig) -> list[dict[str, Any]]:
         if not page_items:
             break
 
-        added = 0
+        page_candidates: list[dict[str, Any]] = []
         for item in page_items:
             article = item.get("id") or item.get("nmId")
             if not article or article in seen_articles:
                 continue
 
             seen_articles.add(article)
-            try:
-                products.append(enrich_product(session, item, host_cache, config))
-                added += 1
-                print(f"[page {page}] parsed article {article}")
-            except Exception as error:
-                message = f"[page {page}] skip article {article}: {error}"
-                print(message)
-                append_error_log(message)
+            page_candidates.append(item)
 
-            time.sleep(config.item_delay_seconds)
+        added = 0
+        with ThreadPoolExecutor(max_workers=config.card_workers) as executor:
+            futures = {
+                executor.submit(enrich_product, build_session(), item, host_cache, config): item
+                for item in page_candidates
+            }
+            for future in as_completed(futures):
+                item = futures[future]
+                article = item.get("id") or item.get("nmId")
+                try:
+                    products.append(future.result())
+                    added += 1
+                    print(f"[page {page}] parsed article {article}")
+                except Exception as error:
+                    message = f"[page {page}] skip article {article}: {error}"
+                    print(message)
+                    append_error_log(message)
+
+                time.sleep(config.item_delay_seconds)
 
         if added == 0:
             break
