@@ -21,6 +21,7 @@ class SearchConfig:
     page: int = 1
     delay_seconds: float = 0.5
     dest: int = -1257786
+    max_retries: int = 6
 
 
 def build_session() -> requests.Session:
@@ -39,11 +40,32 @@ def build_session() -> requests.Session:
     return session
 
 
+def request_json(
+    session: requests.Session,
+    url: str,
+    *,
+    params: dict[str, Any] | None = None,
+    timeout: int = 30,
+    max_retries: int = 6,
+) -> Any:
+    for attempt in range(1, max_retries + 1):
+        response = session.get(url, params=params, timeout=timeout)
+        if response.status_code == 429:
+            time.sleep(min(20, attempt * 2))
+            continue
+
+        response.raise_for_status()
+        return response.json()
+
+    raise RuntimeError(f"Не удалось получить ответ после {max_retries} попыток: {url}")
+
+
 def fetch_search_page(
     session: requests.Session,
     query: str,
     page: int,
     dest: int,
+    max_retries: int,
 ) -> list[dict[str, Any]]:
     params = {
         "appType": 1,
@@ -57,10 +79,8 @@ def fetch_search_page(
         "spp": 30,
         "suppressSpellcheck": "false",
     }
-    response = session.get(SEARCH_URL, params=params, timeout=30)
-    response.raise_for_status()
-    data = response.json()
-    return data.get("data", {}).get("products", []) or data.get("products", [])
+    data = request_json(session, SEARCH_URL, params=params, max_retries=max_retries)
+    return data.get("products", []) or data.get("data", {}).get("products", [])
 
 
 def normalize_search_product(product: dict[str, Any]) -> dict[str, Any]:
@@ -101,7 +121,13 @@ def collect_catalog(config: SearchConfig) -> list[dict[str, Any]]:
     seen_articles: set[int] = set()
 
     while True:
-        page_items = fetch_search_page(session, config.query, page, config.dest)
+        page_items = fetch_search_page(
+            session,
+            config.query,
+            page,
+            config.dest,
+            config.max_retries,
+        )
         if not page_items:
             break
 
