@@ -244,12 +244,19 @@ def collect_catalog(config: SearchConfig) -> list[dict[str, Any]]:
                 continue
 
             seen_articles.add(article)
-            products.append(enrich_product(session, item, host_cache, config))
-            added += 1
+            try:
+                products.append(enrich_product(session, item, host_cache, config))
+                added += 1
+                print(f"[page {page}] parsed article {article}")
+            except Exception as error:
+                print(f"[page {page}] skip article {article}: {error}")
+
+            time.sleep(config.delay_seconds)
 
         if added == 0:
             break
 
+        print(f"Страница {page} обработана, всего товаров: {len(products)}")
         page += 1
         time.sleep(config.delay_seconds)
 
