@@ -1,0 +1,5 @@
+__pycache__/
+.venv/
+full_catalog.xlsx
+filtered_catalog.xlsx
+run_errors.log
