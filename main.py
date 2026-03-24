@@ -13,6 +13,7 @@ SEARCH_QUERY = "пальто из натуральной шерсти"
 FULL_CATALOG_FILE = "full_catalog.xlsx"
 FILTERED_CATALOG_FILE = "filtered_catalog.xlsx"
 SEARCH_URL = "https://search.wb.ru/exactmatch/ru/common/v18/search"
+BASKET_HOSTS = [f"basket-{index:02d}.wbbasket.ru" for index in range(1, 31)]
 
 
 @dataclass
@@ -83,6 +84,46 @@ def fetch_search_page(
     return data.get("products", []) or data.get("data", {}).get("products", [])
 
 
+def product_path_parts(article: int) -> tuple[int, int]:
+    return article // 100000, article // 1000
+
+
+def resolve_basket_host(
+    session: requests.Session,
+    article: int,
+    host_cache: dict[int, str],
+) -> str:
+    vol, part = product_path_parts(article)
+    cached_host = host_cache.get(vol)
+    if cached_host:
+        return cached_host
+
+    for host in BASKET_HOSTS:
+        url = f"https://{host}/vol{vol}/part{part}/{article}/info/ru/card.json"
+        response = session.get(url, timeout=30)
+        if response.status_code == 429:
+            time.sleep(2)
+            continue
+        if response.ok and response.headers.get("content-type", "").startswith("application/json"):
+            host_cache[vol] = host
+            return host
+
+    raise RuntimeError(f"Не удалось определить basket host для товара {article}")
+
+
+def fetch_product_card(
+    session: requests.Session,
+    article: int,
+    host_cache: dict[int, str],
+    max_retries: int,
+) -> tuple[dict[str, Any], str]:
+    host = resolve_basket_host(session, article, host_cache)
+    vol, part = product_path_parts(article)
+    url = f"https://{host}/vol{vol}/part{part}/{article}/info/ru/card.json"
+    card = request_json(session, url, max_retries=max_retries)
+    return card, host
+
+
 def normalize_search_product(product: dict[str, Any]) -> dict[str, Any]:
     article = product.get("id") or product.get("nmId")
     sizes = product.get("sizes") or []
@@ -119,6 +160,7 @@ def collect_catalog(config: SearchConfig) -> list[dict[str, Any]]:
     page = config.page
     products: list[dict[str, Any]] = []
     seen_articles: set[int] = set()
+    host_cache: dict[int, str] = {}
 
     while True:
         page_items = fetch_search_page(
