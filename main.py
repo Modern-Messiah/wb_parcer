@@ -12,6 +12,7 @@ import requests
 SEARCH_QUERY = "пальто из натуральной шерсти"
 FULL_CATALOG_FILE = "full_catalog.xlsx"
 FILTERED_CATALOG_FILE = "filtered_catalog.xlsx"
+ERROR_LOG_FILE = "run_errors.log"
 SEARCH_URL = "https://search.wb.ru/exactmatch/ru/common/v18/search"
 BASKET_HOSTS = [f"basket-{index:02d}.wbbasket.ru" for index in range(1, 31)]
 
@@ -40,6 +41,16 @@ def build_session() -> requests.Session:
         }
     )
     return session
+
+
+def clear_error_log() -> None:
+    with open(ERROR_LOG_FILE, "w", encoding="utf-8") as file:
+        file.write("")
+
+
+def append_error_log(message: str) -> None:
+    with open(ERROR_LOG_FILE, "a", encoding="utf-8") as file:
+        file.write(message + "\n")
 
 
 def request_json(
@@ -221,6 +232,7 @@ def enrich_product(
 
 
 def collect_catalog(config: SearchConfig) -> list[dict[str, Any]]:
+    clear_error_log()
     session = build_session()
     page = config.page
     products: list[dict[str, Any]] = []
@@ -250,7 +262,9 @@ def collect_catalog(config: SearchConfig) -> list[dict[str, Any]]:
                 added += 1
                 print(f"[page {page}] parsed article {article}")
             except Exception as error:
-                print(f"[page {page}] skip article {article}: {error}")
+                message = f"[page {page}] skip article {article}: {error}"
+                print(message)
+                append_error_log(message)
 
             time.sleep(config.item_delay_seconds)
 
