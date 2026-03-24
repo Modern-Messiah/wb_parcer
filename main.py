@@ -20,7 +20,8 @@ BASKET_HOSTS = [f"basket-{index:02d}.wbbasket.ru" for index in range(1, 31)]
 class SearchConfig:
     query: str = SEARCH_QUERY
     page: int = 1
-    delay_seconds: float = 0.5
+    item_delay_seconds: float = 0.05
+    page_delay_seconds: float = 2.5
     dest: int = -1257786
     max_retries: int = 6
 
@@ -251,14 +252,14 @@ def collect_catalog(config: SearchConfig) -> list[dict[str, Any]]:
             except Exception as error:
                 print(f"[page {page}] skip article {article}: {error}")
 
-            time.sleep(config.delay_seconds)
+            time.sleep(config.item_delay_seconds)
 
         if added == 0:
             break
 
         print(f"Страница {page} обработана, всего товаров: {len(products)}")
         page += 1
-        time.sleep(config.delay_seconds)
+        time.sleep(config.page_delay_seconds)
 
     return products
 
